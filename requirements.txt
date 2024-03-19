@@ -1,0 +1,4 @@
+sentence_transformers
+chromadb
+langchain
+langchain-mongodb
