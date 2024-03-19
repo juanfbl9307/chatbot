@@ -2,3 +2,7 @@ sentence_transformers
 chromadb
 langchain
 langchain-mongodb
+fastapi
+uvicorn
+pydantic
+langchain-community

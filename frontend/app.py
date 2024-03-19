@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import uuid
 
-backend_chatbot_url = "https://vp4ohcklnc.execute-api.ap-south-1.amazonaws.com/Prod/response"
+backend_chatbot_url = "http://localhost:8082/chat"
 
 
 # Function to initialize session ID
@@ -18,8 +18,7 @@ if 'session_id' not in st.session_state:
 
 # Function for generating LLM response
 def generate_response(prompt_input):
-    response_chat = requests.request("POST", backend_chatbot_url, headers=llm_headers, data=prompt_input)
-    print(response_chat.text)
+    response_chat = requests.request("POST", backend_chatbot_url, headers=llm_headers, json={"content": prompt_input})
     if response_chat.status_code == 200:
         resp_json = response_chat.json()
         st.sidebar.json(resp_json)
@@ -27,21 +26,20 @@ def generate_response(prompt_input):
         return send_resp
     else:
         print(response_chat.text)
-        return "Something went wrong with LLM Pipeline.."
+        return "Algo fallo en la respuesta.."
 
 
 # Check if 'messages' is already in st.session_state, if not initialize it
 if 'messages' not in st.session_state:
     st.session_state['messages'] = [
-        {"role": "assistant", "content": "Welcome to AWS Assistant BOT, How may I help you?"}]
+        {"role": "assistant", "content": "Bienvenido a tu asistente de pedidos, ¿en qué puedo ayudarte hoy?"}]
 
-st.set_page_config(page_title="AWS Assistant BOT")
-st.sidebar.title("Designed by Machine Learning Hub")
+st.set_page_config(page_title="Asistente de negocios")
+st.sidebar.title("Creado por Juan Felipe para todos los negocios")
 st.sidebar.info(st.session_state['session_id'])
-st.sidebar.warning("Refreshing page will change session_id & forget the conversation!")
+st.sidebar.warning("Refrescar la pagina restablecerá la conversación, cambiando el session_id")
 
 llm_headers = {
-    'Content-Type': 'text/plain',
     'session_id': st.session_state['session_id']
 }
 
@@ -59,7 +57,7 @@ if user_prompt := st.chat_input():
     # Generate a new response if the last message is not from the assistant
     if st.session_state.messages[-1]["role"] != "assistant":
         with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
+            with st.spinner("Procesando..."):
                 response = generate_response(user_prompt)
                 st.markdown(response, unsafe_allow_html=True)
             # message_placeholder = st.empty()

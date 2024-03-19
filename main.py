@@ -9,6 +9,11 @@ import os
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 import dotenv
 import warnings
+from typing import Union
+from fastapi import FastAPI, Header
+import uvicorn
+from pydantic import BaseModel
+from typing import Annotated
 
 warnings.filterwarnings("ignore")
 
@@ -78,8 +83,11 @@ class ChromaRepository:
         }
 
 
+chroma_repository = ChromaRepository()
+
+
 class ChatBot:
-    def __init__(self, chat_history: ChatHistory, chroma_repository: ChromaRepository, prompt_template,
+    def __init__(self, chat_history: ChatHistory, prompt_template,
                  context_template_prompt):
 
         self.chroma_repository = chroma_repository
@@ -133,17 +141,15 @@ class ChatBot:
         return content
 
 
-def main():
-    chroma_repository = ChromaRepository()
+def main(session_id):
     chat_history = ChatHistory(
-        session_id="chatbot",
+        session_id=session_id,
         collection_name="histories",
         mongo_uri="mongodb://admin:password@localhost:27017",
         mongo_db_name="chat"
     )
     chat_bot = ChatBot(
         chat_history=chat_history,
-        chroma_repository=chroma_repository,
         prompt_template="""
             Hola, soy tu asistente virtual de pedidos. Estoy aquí para ayudarte a realizar tu pedido de manera rápida y eficiente. Por favor, proporcióname los siguientes detalles para poder procesar tu pedido correctamente:
 
@@ -173,11 +179,19 @@ que se pueda entender sin el historial de chat. NO respondas a la pregunta,
 solo reformúlala si es necesario y, de lo contrario, devuélvela tal cual."""
     )
 
-    while True:
-        question = input("Pregunta: ")
-        response = chat_bot.query(question)
-        print(response)
+    return chat_bot
 
 
+class Chat(BaseModel):
+    content: str
+
+
+app = FastAPI()
 if __name__ == "__main__":
-    main()
+    @app.post("/chat/")
+    async def chat(chat_json: Chat, session_id: Annotated[str | None, Header(convert_underscores=False)] = None):
+        chat_bot = main(session_id)
+        return {"Response": chat_bot.query(chat_json.content)}
+
+
+    uvicorn.run(app, host="0.0.0.0", port=8082)
