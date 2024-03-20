@@ -9,7 +9,6 @@ import os
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 import dotenv
 import warnings
-from typing import Union
 from fastapi import FastAPI, Header
 import uvicorn
 from pydantic import BaseModel
@@ -18,7 +17,7 @@ from typing import Annotated
 warnings.filterwarnings("ignore")
 
 dotenv.load_dotenv()
-chromadb_client = chromadb.Client()
+
 embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
 chat_hist_msg_count = int(os.environ.get('CHAT_HISTORY_MESSAGE_COUNT', '24').strip())
 model = "gpt-3.5-turbo"
@@ -57,23 +56,27 @@ class ChatHistory:
 
 class ChromaRepository:
     def __init__(self, collection_name="chatbot"):
+        self.client = chromadb.HttpClient(host="localhost", port=8000)
         self.collection_name = collection_name
-        self.collection = chromadb_client.get_or_create_collection(self.collection_name)
+        self.collection = self.client.get_or_create_collection(self.collection_name)
         self.langchain_chroma = Chroma(
-            client=chromadb_client,
+            client=self.client,
             collection_name=self.collection_name,
             embedding_function=embedding_function,
         )
         pass
 
     def get_retriever(self):
-        return self.langchain_chroma.as_retriever()
+        return self.langchain_chroma.as_retriever(search_type="mmr")
 
     def get_collection(self):
         return self.collection
 
     def get_chroma(self):
         return self.langchain_chroma
+
+    def get_client(self):
+        return self.client
 
     def query(self, query, limit=3) -> dict:
         result = self.langchain_chroma.similarity_search_with_score(query, k=limit)
@@ -83,12 +86,9 @@ class ChromaRepository:
         }
 
 
-chroma_repository = ChromaRepository()
-
-
 class ChatBot:
     def __init__(self, chat_history: ChatHistory, prompt_template,
-                 context_template_prompt):
+                 context_template_prompt, chroma_repository):
 
         self.chroma_repository = chroma_repository
         self.chat_history = chat_history
@@ -107,9 +107,10 @@ class ChatBot:
                 ("human", "{question}"),
             ]
         )
+
         self.rag_chain = (
                 RunnablePassthrough.assign(
-                    contexto=self.__contextualized_question | chroma_repository.get_retriever() | format_docs
+                    contexto=self.__contextualized_question | self.chroma_repository.get_retriever() | format_docs
                 )
                 | qa_prompt
                 | llm
@@ -130,18 +131,16 @@ class ChatBot:
             msgs = chat_history_messages
         else:
             msgs = chat_history_messages[-chat_hist_msg_count:]
-
+        print(texto)
         response = self.rag_chain.invoke({"question": texto, "chat_history": msgs})
         content = response.content
-        if "## Orden de Pedido" in content:
-            print("pedido realizado!!")
-
         chat_history.add_user_message(texto)
         chat_history.add_ai_message(content)
         return content
 
 
 def main(session_id):
+    chroma_repository = ChromaRepository("chatbot")
     chat_history = ChatHistory(
         session_id=session_id,
         collection_name="histories",
@@ -149,27 +148,30 @@ def main(session_id):
         mongo_db_name="chat"
     )
     chat_bot = ChatBot(
+        chroma_repository=chroma_repository,
         chat_history=chat_history,
         prompt_template="""
             Hola, soy tu asistente virtual de pedidos. Estoy aquí para ayudarte a realizar tu pedido de manera rápida y eficiente. Por favor, proporcióname los siguientes detalles para poder procesar tu pedido correctamente:
 
-            Nombre del Producto o Servicio: (Por ejemplo, "Pizza Margarita grande", "Reservación para dos personas", etc.)
+            * Nombre del Producto o Servicio: (Por ejemplo, "Pizza Margarita grande", "Reservación para dos personas", etc.)
             
-            Cantidad: (Indica cuántas unidades del producto o servicio deseas.)
+            * Cantidad: (Indica cuántas unidades del producto o servicio deseas.)
             
-            Opciones Específicas: (Si el producto o servicio tiene opciones adicionales, como tamaño, color, ingredientes extra, etc., inclúyelas aquí.)
+            * Opciones Específicas: (Si el producto o servicio tiene opciones adicionales, como tamaño, color, ingredientes extra, etc., inclúyelas aquí.)
             
-            Fecha y Hora de Entrega o Reservación: (Especifica cuándo necesitas que se entregue tu pedido o para cuándo deseas hacer la reservación.)
+            * Fecha y Hora de Entrega o Reservación (opcional, en caso de no ser definida se designara para el dia de hoy): (Especifica cuándo necesitas que se entregue tu pedido o para cuándo deseas hacer la reservación.)
             
-            Dirección de Entrega: (Si tu pedido requiere entrega, proporciona la dirección completa y cualquier instrucción específica para el repartidor.)
+            * Dirección de Entrega: (Si tu pedido requiere entrega, proporciona la dirección completa y cualquier instrucción específica para el repartidor.)
             
-            Información de Contacto: (Incluye un número de teléfono o correo electrónico donde podamos contactarte para confirmar el pedido o en caso de necesitar más detalles.)
+            * Información de Contacto: (Incluye un número de teléfono o correo electrónico donde podamos contactarte para confirmar el pedido o en caso de necesitar más detalles.)
             
             Una vez que tengas toda esta información, puedes decírmela o escribirla aquí. Yo me encargaré de revisar los detalles y generar tu pedido. Si hay algo que necesito aclarar o confirmar, te lo haré saber.
             
-            En caso de obtener la informacion del cliente y de la orden, retornarla formateada y lista para ser procesada, con una cabezera que diga "Orden de Pedido", generando un numero aleatorio para la orden y los detalles de la orden.
+            En caso de obtener la informacion del cliente y de la orden, retornarla formateada y lista para ser procesada, con una cabezera que diga "Orden de Pedido # pedido", generando un numero aleatorio para la orden y los detalles de la orden.
             
-            Cuando el cliente confirme la orden se debe enviar un mensaje agradeciendo la orden, con el mismo numero del pedido y dando un tiempo estimado de entrega.
+            Antes de informar al cliente del despacho, se debe verificar la disponibilidad del producto y la fecha de entrega.
+            
+            Las respuestas que se responderan solamente pueden ser en el contexto de las preguntas que se hagan, si se hace una pregunta que no este en el contexto, se debe responder con un mensaje de "No entiendo la pregunta, por favor reformule su pregunta"
             
             {contexto}
             """,

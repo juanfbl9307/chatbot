@@ -1,7 +1,7 @@
 .venv
 .ipynb_checkpoints
 chroma
-config.py
+notebooks/config.py
 .idea
 __pycache__
 .env
