@@ -29,6 +29,7 @@ services:
       - chroma-data:/chroma/chroma
     command: "--workers 1 --host 0.0.0.0 --port 8000 --proxy-headers --log-config chromadb/log_config.yml --timeout-keep-alive 30"
     environment:
+      - ALLOW_RESET=TRUE
       - IS_PERSISTENT=TRUE
       - CHROMA_SERVER_AUTH_PROVIDER=${CHROMA_SERVER_AUTH_PROVIDER}
       - CHROMA_SERVER_AUTH_CREDENTIALS_FILE=${CHROMA_SERVER_AUTH_CREDENTIALS_FILE}

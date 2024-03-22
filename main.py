@@ -18,10 +18,15 @@ warnings.filterwarnings("ignore")
 
 dotenv.load_dotenv()
 
-embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
 chat_hist_msg_count = int(os.environ.get('CHAT_HISTORY_MESSAGE_COUNT', '24').strip())
 model = "gpt-3.5-turbo"
+openai_api_key = os.getenv('OPENAI_API_KEY')
 
+embedding_model = "text-embedding-ada-002"
+embeddings = OpenAIEmbeddings(
+    model=embedding_model,
+    openai_api_key=openai_api_key
+)
 llm = ChatOpenAI(temperature=0.5, model=model, max_tokens=4096)
 
 
@@ -62,7 +67,7 @@ class ChromaRepository:
         self.langchain_chroma = Chroma(
             client=self.client,
             collection_name=self.collection_name,
-            embedding_function=embedding_function,
+            embedding_function=embeddings,
         )
         pass
 
@@ -151,9 +156,9 @@ def main(session_id):
         chroma_repository=chroma_repository,
         chat_history=chat_history,
         prompt_template="""
-            Hola, soy tu asistente virtual de pedidos. Estoy aquí para ayudarte a realizar tu pedido de manera rápida y eficiente. Por favor, proporcióname los siguientes detalles para poder procesar tu pedido correctamente:
+            Hola, soy tu asistente virtual de la heladeria Montuno en Sincelejo. Estoy aquí para ayudarte a realizar tu pedido de manera rápida y eficiente. Por favor, proporcióname los siguientes detalles para poder procesar tu pedido correctamente:
 
-            * Nombre del Producto o Servicio: (Por ejemplo, "Pizza Margarita grande", "Reservación para dos personas", etc.)
+            * Nombre del Producto o Servicio: (Por ejemplo, "Miguita cono Vainilla", "Tambuco de chocolate", etc.)
             
             * Cantidad: (Indica cuántas unidades del producto o servicio deseas.)
             
@@ -169,9 +174,17 @@ def main(session_id):
             
             En caso de obtener la informacion del cliente y de la orden, retornarla formateada y lista para ser procesada, con una cabezera que diga "Orden de Pedido # pedido", generando un numero aleatorio para la orden y los detalles de la orden.
             
-            Antes de informar al cliente del despacho, se debe verificar la disponibilidad del producto y la fecha de entrega.
+            Antes de informar al cliente del despacho, se debe verificar la disponibilidad del producto y la fecha de entrega, confirmar la informacion del cliente como nombre, direccion y telefono, metodo de pago
             
             Las respuestas que se responderan solamente pueden ser en el contexto de las preguntas que se hagan, si se hace una pregunta que no este en el contexto, se debe responder con un mensaje de "No entiendo la pregunta, por favor reformule su pregunta"
+            
+            Siempre saludar al cliente de manera amable, haciendole saber que se esta comunicando con la heladeria Montuno!
+            
+            Verificar el estado de la orden, si esta en proceso, en camino o entregada.
+            
+            La distribucion o venta se hara por domicilio, por lo que se debe verificar la direccion de entrega y el metodo de pago, o si es recoger en el sitio.
+            
+            Revisar los sabores, presentaciones y precios de los productos
             
             {contexto}
             """,
