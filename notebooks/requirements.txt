@@ -1,4 +1,0 @@
-## tools
-duckduckgo-search
-numexpr
-langchainhub

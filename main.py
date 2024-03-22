@@ -1,6 +1,5 @@
 from langchain_community.vectorstores import Chroma
 import chromadb
-from langchain_community.embeddings.sentence_transformer import SentenceTransformerEmbeddings
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -36,7 +35,7 @@ def format_docs(documents):
 
 class ChatHistory:
     def __init__(self, session_id, collection_name, mongo_uri, mongo_db_name):
-        self.client = MongoDBChatMessageHistory(
+        self.chat_history = MongoDBChatMessageHistory(
             session_id=session_id,
             connection_string=mongo_uri,
             database_name=mongo_db_name,
@@ -44,19 +43,23 @@ class ChatHistory:
         )
         pass
 
-    def get_chat_history_client(self):
-        return self.client
+    def get_chat_history_messages(self):
+        return self.chat_history.messages
 
     def add_user_message(self, message):
-        self.client.add_user_message(message)
+        self.chat_history.add_user_message(message)
         pass
 
     def add_ai_message(self, message):
-        self.client.add_ai_message(message)
+        self.chat_history.add_ai_message(message)
+        pass
+
+    def close_client(self):
+        self.chat_history.client.close()
         pass
 
     def get_messages(self):
-        return self.client.messages
+        return self.chat_history.messages
 
 
 class ChromaRepository:
@@ -71,8 +74,8 @@ class ChromaRepository:
         )
         pass
 
-    def get_retriever(self):
-        return self.langchain_chroma.as_retriever(search_type="mmr")
+    def get_retriever(self, number_of_docs=2):
+        return self.langchain_chroma.as_retriever(search_kwargs={"k": number_of_docs})
 
     def get_collection(self):
         return self.collection
@@ -130,17 +133,17 @@ class ChatBot:
             return input_question["question"]
 
     def query(self, texto):
-        chat_history = self.chat_history.get_chat_history_client()
-        chat_history_messages = chat_history.messages
+        chat_history = self.chat_history
+        chat_history_messages = chat_history.get_chat_history_messages()
         if len(chat_history_messages) <= chat_hist_msg_count:
             msgs = chat_history_messages
         else:
             msgs = chat_history_messages[-chat_hist_msg_count:]
-        print(texto)
         response = self.rag_chain.invoke({"question": texto, "chat_history": msgs})
         content = response.content
         chat_history.add_user_message(texto)
         chat_history.add_ai_message(content)
+        chat_history.close_client()
         return content
 
 
